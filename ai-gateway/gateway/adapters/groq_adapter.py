@@ -1,7 +1,7 @@
 import json
 import time
+from typing import Optional, AsyncGenerator
 import httpx
-from typing import AsyncGenerator
 from fastapi import HTTPException
 from adapters.base import BaseProviderAdapter, LLMRequest, LLMResponse, Usage
 
@@ -19,13 +19,14 @@ GROQ_MODEL_ALIASES = {
 }
 
 class GroqAdapter(BaseProviderAdapter):
-    def __init__(self, api_key: str, base_url: str = "https://api.groq.com/openai/v1"):
-        super().__init__(api_key, base_url)
+    def __init__(self, api_key: Optional[str] = None, base_url: str = "https://api.groq.com/openai/v1"):
+        super().__init__(api_key or "", base_url)
         self.endpoint = f"{self.base_url.rstrip('/')}/chat/completions"
 
     def _headers(self):
+        key = self.api_key or ""
         return {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
         }
 
@@ -35,6 +36,12 @@ class GroqAdapter(BaseProviderAdapter):
         return model
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
+        if not self.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Groq API key is missing or not configured in environment variables."
+            )
+
         resolved_model = self._resolve_model(request.model)
         payload = {
             "model": resolved_model,
@@ -72,6 +79,12 @@ class GroqAdapter(BaseProviderAdapter):
             )
 
     async def stream(self, request: LLMRequest) -> AsyncGenerator[str, None]:
+        if not self.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Groq API key is missing or not configured in environment variables."
+            )
+
         resolved_model = self._resolve_model(request.model)
         payload = {
             "model": resolved_model,
@@ -94,5 +107,3 @@ class GroqAdapter(BaseProviderAdapter):
                         continue
                     if line.startswith("data: "):
                         yield f"{line}\n\n"
-                    elif line == "data: [DONE]":
-                        yield "data: [DONE]\n\n"

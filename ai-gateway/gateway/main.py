@@ -1,3 +1,15 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Ensure .env is loaded at the VERY TOP before any other modules run
+_current_file = Path(__file__).resolve()
+for _p in [_current_file.parent / ".env", _current_file.parent.parent / ".env", Path.cwd() / ".env"]:
+    if _p.exists():
+        load_dotenv(dotenv_path=_p, override=True)
+        break
+load_dotenv()
+
 import time
 import uuid
 import json
@@ -85,6 +97,16 @@ app = FastAPI(
     description="Enterprise-grade AI Gateway-as-a-Service (LLM Router, Multi-Provider Proxy, Budget Management)",
     lifespan=lifespan
 )
+
+@app.on_event("startup")
+async def startup_event():
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+    groq_key = os.getenv("GROQ_API_KEY")
+    if not gemini_key and not openai_key and not groq_key:
+        print("WARNING: No LLM API keys found in environment variables!")
+    else:
+        print("SUCCESS: Environment variables loaded successfully.")
 
 # CORS setup
 app.add_middleware(

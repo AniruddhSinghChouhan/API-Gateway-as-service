@@ -1,18 +1,19 @@
 import json
 import time
+from typing import Optional, AsyncGenerator
 import httpx
-from typing import AsyncGenerator
 from fastapi import HTTPException
 from adapters.base import BaseProviderAdapter, LLMRequest, LLMResponse, Usage
 
 class AnthropicAdapter(BaseProviderAdapter):
-    def __init__(self, api_key: str, base_url: str = "https://api.anthropic.com/v1"):
-        super().__init__(api_key, base_url)
+    def __init__(self, api_key: Optional[str] = None, base_url: str = "https://api.anthropic.com/v1"):
+        super().__init__(api_key or "", base_url)
         self.endpoint = f"{self.base_url.rstrip('/')}/messages"
 
     def _headers(self):
+        key = self.api_key or ""
         return {
-            "x-api-key": self.api_key,
+            "x-api-key": key,
             "anthropic-version": "2023-06-01",
             "content-type": "application/json"
         }
@@ -40,6 +41,12 @@ class AnthropicAdapter(BaseProviderAdapter):
         return payload
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
+        if not self.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Anthropic API key is missing or not configured in environment variables."
+            )
+
         payload = self._transform_request(request)
         payload["stream"] = False
 
@@ -51,7 +58,6 @@ class AnthropicAdapter(BaseProviderAdapter):
                     detail=f"Anthropic error: {resp.text}"
                 )
             data = resp.json()
-            # Extract content from text blocks
             content = ""
             for block in data.get("content", []):
                 if block.get("type") == "text":
@@ -76,6 +82,12 @@ class AnthropicAdapter(BaseProviderAdapter):
             )
 
     async def stream(self, request: LLMRequest) -> AsyncGenerator[str, None]:
+        if not self.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Anthropic API key is missing or not configured in environment variables."
+            )
+
         payload = self._transform_request(request)
         payload["stream"] = True
         completion_id = f"chatcmpl-anthropic-{int(time.time())}"

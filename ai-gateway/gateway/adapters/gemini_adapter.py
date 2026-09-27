@@ -1,13 +1,13 @@
 import json
 import time
+from typing import Optional, AsyncGenerator
 import httpx
-from typing import AsyncGenerator
 from fastapi import HTTPException
 from adapters.base import BaseProviderAdapter, LLMRequest, LLMResponse, Usage
 
 class GeminiAdapter(BaseProviderAdapter):
-    def __init__(self, api_key: str, base_url: str = "https://generativelanguage.googleapis.com/v1beta"):
-        super().__init__(api_key, base_url)
+    def __init__(self, api_key: Optional[str] = None, base_url: str = "https://generativelanguage.googleapis.com/v1beta"):
+        super().__init__(api_key or "", base_url)
 
     def _transform_request(self, request: LLMRequest):
         system_instruction = None
@@ -39,6 +39,12 @@ class GeminiAdapter(BaseProviderAdapter):
         return payload
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
+        if not self.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Gemini API key is missing or not configured in environment variables."
+            )
+
         model_name = request.model
         if not model_name.startswith("gemini-"):
             model_name = "gemini-1.5-flash"
@@ -80,6 +86,12 @@ class GeminiAdapter(BaseProviderAdapter):
             )
 
     async def stream(self, request: LLMRequest) -> AsyncGenerator[str, None]:
+        if not self.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="Gemini API key is missing or not configured in environment variables."
+            )
+
         model_name = request.model
         if not model_name.startswith("gemini-"):
             model_name = "gemini-1.5-flash"

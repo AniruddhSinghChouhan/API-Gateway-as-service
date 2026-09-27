@@ -1,22 +1,29 @@
 import json
 import time
+from typing import Optional, AsyncGenerator
 import httpx
-from typing import AsyncGenerator
 from fastapi import HTTPException
 from adapters.base import BaseProviderAdapter, LLMRequest, LLMResponse, Usage
 
 class OpenAIAdapter(BaseProviderAdapter):
-    def __init__(self, api_key: str, base_url: str = "https://api.openai.com/v1"):
-        super().__init__(api_key, base_url)
+    def __init__(self, api_key: Optional[str] = None, base_url: str = "https://api.openai.com/v1"):
+        super().__init__(api_key or "", base_url)
         self.endpoint = f"{self.base_url.rstrip('/')}/chat/completions"
 
     def _headers(self):
+        key = self.api_key or ""
         return {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
         }
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
+        if not self.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="OpenAI API key is missing or not configured in environment variables."
+            )
+
         payload = {
             "model": request.model,
             "messages": [m.model_dump(exclude_none=True) for m in request.messages],
@@ -53,6 +60,12 @@ class OpenAIAdapter(BaseProviderAdapter):
             )
 
     async def stream(self, request: LLMRequest) -> AsyncGenerator[str, None]:
+        if not self.api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="OpenAI API key is missing or not configured in environment variables."
+            )
+
         payload = {
             "model": request.model,
             "messages": [m.model_dump(exclude_none=True) for m in request.messages],
@@ -66,13 +79,11 @@ class OpenAIAdapter(BaseProviderAdapter):
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream("POST", self.endpoint, headers=self._headers(), json=payload) as response:
                 if response.status_code != 200:
-                    error_body = await response.aread()
-                    raise HTTPException(status_code=response.status_code, detail=f"OpenAI error: {error_body.decode()}")
+                    err_body = await response.aread()
+                    raise HTTPException(status_code=response.status_code, detail=f"OpenAI error: {err_body.decode()}")
 
                 async for line in response.aiter_lines():
                     if not line:
                         continue
                     if line.startswith("data: "):
                         yield f"{line}\n\n"
-                    elif line == "data: [DONE]":
-                        yield "data: [DONE]\n\n"
