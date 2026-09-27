@@ -32,7 +32,7 @@ import {
   Gauge
 } from "lucide-react";
 
-const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
+const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "";
 
 interface MetricData {
   total_requests: number;
@@ -105,6 +105,8 @@ export default function Dashboard() {
   const [newRpm, setNewRpm] = useState("120");
   const [createdSecretKey, setCreatedSecretKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [keyCreateError, setKeyCreateError] = useState<string | null>(null);
+  const [isSubmittingKey, setIsSubmittingKey] = useState(false);
 
   // Playground state
   const [pgModel, setPgModel] = useState("openai/gpt-oss-20b");
@@ -168,6 +170,8 @@ export default function Dashboard() {
   const handleCreateKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newKeyName.trim()) return;
+    setKeyCreateError(null);
+    setIsSubmittingKey(true);
 
     try {
       const res = await fetch(`${GATEWAY_URL}/api/keys`, {
@@ -181,13 +185,22 @@ export default function Dashboard() {
           allowed_models: ["*"],
         }),
       });
+
       if (res.ok) {
         const data = await res.json();
         setCreatedSecretKey(data.api_key);
         fetchData();
+      } else {
+        const errJson = await res.json().catch(() => ({ detail: "Server error" }));
+        setKeyCreateError(`Failed (${res.status}): ${errJson.detail || res.statusText}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Key creation error:", err);
+      setKeyCreateError(
+        "Cannot reach AI Gateway at http://localhost:8000. Please start the backend service in a terminal: python -m uvicorn main:app --host 0.0.0.0 --port 8000"
+      );
+    } finally {
+      setIsSubmittingKey(false);
     }
   };
 
@@ -1160,6 +1173,13 @@ export default function Dashboard() {
               </div>
             ) : (
               <form onSubmit={handleCreateKey} className="space-y-4">
+                {keyCreateError && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start space-x-2 animate-fadeIn">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                    <span>{keyCreateError}</span>
+                  </div>
+                )}
+
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">Key Name / Label</label>
                   <input
@@ -1216,9 +1236,17 @@ export default function Dashboard() {
                   </button>
                   <button
                     type="submit"
-                    className="w-1/2 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-500/20"
+                    disabled={isSubmittingKey}
+                    className="w-1/2 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-500/20 flex items-center justify-center space-x-1.5"
                   >
-                    Create Virtual Key
+                    {isSubmittingKey ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Creating...</span>
+                      </>
+                    ) : (
+                      <span>Create Virtual Key</span>
+                    )}
                   </button>
                 </div>
               </form>
